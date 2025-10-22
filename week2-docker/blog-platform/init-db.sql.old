@@ -1,0 +1,170 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users table with enhanced fields
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(20) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password VARCHAR(256) NOT NULL,
+    bio TEXT,
+    avatar_url VARCHAR(500),
+    is_active BOOLEAN DEFAULT TRUE,
+    is_admin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Posts table with categories and likes
+CREATE TABLE IF NOT EXISTS posts (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    author_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    category VARCHAR(50) DEFAULT 'General',
+    views INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    is_published BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Comments table
+CREATE TABLE IF NOT EXISTS comments (
+    id SERIAL PRIMARY KEY,
+    post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Post tags for better categorization
+CREATE TABLE IF NOT EXISTS tags (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Many-to-many relationship between posts and tags
+CREATE TABLE IF NOT EXISTS post_tags (
+    post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+    tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (post_id, tag_id)
+);
+
+-- User followers (social feature)
+CREATE TABLE IF NOT EXISTS followers (
+    follower_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    following_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (follower_id, following_id),
+    CHECK (follower_id != following_id)
+);
+
+-- Bookmarks/Saved posts
+CREATE TABLE IF NOT EXISTS bookmarks (
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, post_id)
+);
+
+-- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_category ON posts(category);
+CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Full text search index
+CREATE INDEX IF NOT EXISTS idx_posts_title_search ON posts USING gin(to_tsvector('english', title));
+CREATE INDEX IF NOT EXISTS idx_posts_content_search ON posts USING gin(to_tsvector('english', content));
+
+-- Insert sample users (passwords are hashed - password is "password123" for all)
+INSERT INTO users (username, email, password, bio) VALUES
+('johndoe', 'john@example.com', 'c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd47d1ff60b75d5a4c1', 'DevOps Engineer | Docker Enthusiast | Cloud Native'),
+('janedoe', 'jane@example.com', 'c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd47d1ff60b75d5a4c1', 'SRE | Kubernetes Expert | Open Source Contributor')
+ON CONFLICT (username) DO NOTHING;
+
+-- Insert sample categories/tags
+INSERT INTO tags (name) VALUES
+('Docker'),
+('Kubernetes'),
+('CI/CD'),
+('DevOps'),
+('Microservices'),
+('Cloud'),
+('AWS'),
+('Monitoring'),
+('Security')
+ON CONFLICT (name) DO NOTHING;
+
+-- Insert sample posts with different categories
+DO $$
+DECLARE
+    user1_id INTEGER;
+    user2_id INTEGER;
+    post1_id INTEGER;
+    post2_id INTEGER;
+    post3_id INTEGER;
+BEGIN
+    -- Get user IDs
+    SELECT id INTO user1_id FROM users WHERE username = 'johndoe';
+    SELECT id INTO user2_id FROM users WHERE username = 'janedoe';
+    
+    -- Insert posts
+    INSERT INTO posts (title, content, author_id, category, views, likes) VALUES
+    ('Getting Started with Docker', 
+     E'Docker is a platform for developing, shipping, and running applications in containers.\n\nIn this comprehensive guide, we''ll explore:\n\n1. **What is Docker?**\n   Docker packages applications and their dependencies into containers that run consistently across environments.\n\n2. **Key Concepts**\n   - Images: Read-only templates\n   - Containers: Running instances\n   - Dockerfile: Build instructions\n   - Docker Compose: Multi-container orchestration\n\n3. **Getting Started**\n   ```bash\n   # Pull an image\n   docker pull nginx:alpine\n   \n   # Run a container\n   docker run -d -p 80:80 nginx:alpine\n   \n   # List containers\n   docker ps\n   ```\n\n4. **Best Practices**\n   - Use multi-stage builds\n   - Minimize layer count\n   - Don''t run as root\n   - Use .dockerignore\n   - Keep images small\n\n5. **Security Considerations**\n   - Scan images for vulnerabilities\n   - Use official base images\n   - Update regularly\n   - Implement secrets management\n\nDocker revolutionizes application deployment by ensuring consistency across development, testing, and production environments.',
+     user1_id, 'Docker', 150, 12),
+    
+    ('Kubernetes Best Practices', 
+     E'Kubernetes has become the standard for container orchestration. Here are production best practices:\n\n## Resource Management\n\n**Set Resource Requests and Limits**\n```yaml\nresources:\n  requests:\n    memory: "128Mi"\n    cpu: "250m"\n  limits:\n    memory: "256Mi"\n    cpu: "500m"\n```\n\n## Health Checks\n\nImplement liveness and readiness probes:\n```yaml\nlivenessProbe:\n  httpGet:\n    path: /health\n    port: 8080\n  initialDelaySeconds: 30\n  periodSeconds: 10\n```\n\n## Security\n\n1. **Use RBAC** - Role-Based Access Control\n2. **Network Policies** - Control pod communication\n3. **Pod Security Standards** - Enforce security contexts\n4. **Secrets Management** - Use sealed secrets or external vaults\n\n## Observability\n\n- Implement logging (ELK, Loki)\n- Set up metrics (Prometheus)\n- Use distributed tracing (Jaeger)\n- Configure alerting\n\n## High Availability\n\n- Run multiple replicas\n- Use pod disruption budgets\n- Configure anti-affinity rules\n- Implement proper health checks\n\nThese practices ensure your Kubernetes clusters are production-ready, secure, and maintainable.',
+     user2_id, 'Kubernetes', 230, 18),
+    
+    ('Building Microservices Architecture', 
+     E'Microservices architecture allows teams to develop and deploy independently. Let''s dive into the patterns:\n\n## Why Microservices?\n\n**Benefits:**\n- Independent deployment\n- Technology flexibility\n- Team autonomy\n- Better scalability\n- Fault isolation\n\n**Challenges:**\n- Distributed system complexity\n- Data consistency\n- Network latency\n- Testing complexity\n\n## Key Patterns\n\n### 1. API Gateway\nSingle entry point for all clients:\n```\nClient → API Gateway → Services\n```\n\n### 2. Service Discovery\nDynamic service registration and discovery (Consul, Eureka)\n\n### 3. Circuit Breaker\nPrevent cascading failures:\n```python\n@circuit_breaker(failure_threshold=5, timeout=60)\ndef call_external_service():\n    # Service call\n    pass\n```\n\n### 4. Event-Driven Architecture\nAsync communication using message queues (RabbitMQ, Kafka)\n\n### 5. Database per Service\nEach service owns its data\n\n## Communication\n\n**Synchronous:** REST, gRPC\n**Asynchronous:** Message queues, Event streams\n\n## Observability Stack\n\n- **Logs:** ELK Stack\n- **Metrics:** Prometheus + Grafana\n- **Tracing:** Jaeger/Zipkin\n- **Alerting:** AlertManager\n\n## Deployment Strategy\n\n1. Containerize services (Docker)\n2. Orchestrate with Kubernetes\n3. Implement CI/CD pipelines\n4. Use blue-green or canary deployments\n5. Monitor everything\n\nMicroservices require careful planning but offer significant benefits for large-scale applications.',
+     user1_id, 'Microservices', 180, 15)
+    RETURNING id INTO post1_id;
+    
+    -- Get post IDs for tagging
+    SELECT id INTO post1_id FROM posts WHERE title = 'Getting Started with Docker';
+    SELECT id INTO post2_id FROM posts WHERE title = 'Kubernetes Best Practices';
+    SELECT id INTO post3_id FROM posts WHERE title = 'Building Microservices Architecture';
+    
+    -- Tag posts
+    INSERT INTO post_tags (post_id, tag_id)
+    SELECT post1_id, id FROM tags WHERE name IN ('Docker', 'DevOps')
+    ON CONFLICT DO NOTHING;
+    
+    INSERT INTO post_tags (post_id, tag_id)
+    SELECT post2_id, id FROM tags WHERE name IN ('Kubernetes', 'DevOps', 'Cloud')
+    ON CONFLICT DO NOTHING;
+    
+    INSERT INTO post_tags (post_id, tag_id)
+    SELECT post3_id, id FROM tags WHERE name IN ('Microservices', 'DevOps', 'Cloud')
+    ON CONFLICT DO NOTHING;
+    
+END $$;
+
+-- Create a function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Create triggers for updated_at
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_posts_updated_at BEFORE UPDATE ON posts
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Grant permissions
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres;
