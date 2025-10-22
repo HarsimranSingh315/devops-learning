@@ -1,0 +1,33 @@
+
+
+services:
+  # Service 1: Web application
+  web:
+    # Build image from Dockerfile in current directory
+    build: .
+    
+    # Map port 5000 on host to port 5000 in container
+    # Format: "host_port:container_port"
+    ports:
+      - "5000:5000"
+    
+    # This service depends on 'redis' service
+    # Docker Compose will start redis before web
+    depends_on:
+      - redis
+    
+    # Environment variables passed to container
+    environment:
+      - FLASK_ENV=development
+    
+    # Restart policy: always restart if container crashes
+    restart: unless-stopped
+
+  # Service 2: Redis cache
+  redis:
+    # Use official Redis image from Docker Hub
+    # 'alpine' = tiny Linux distribution (5MB vs 100MB+)
+    image: redis:alpine
+    
+    # Restart policy
+    restart: unless-stopped
